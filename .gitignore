@@ -1,0 +1,33 @@
+# Plik .gitignore - pliki które nie powinny być commitowane do repozytorium
+
+# Plik z kluczami API - NIGDY nie commituj!
+.env
+
+# Pliki tymczasowe Pythona
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Środowiska wirtualne
+venv/
+env/
+.venv/
+
+# Pliki IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Pliki tymczasowe systemu
+.DS_Store
+Thumbs.db
+
+# Pliki tymczasowe aplikacji
+temp/
+*.tmp
+
+#Pliki użytkownika
+Prompt.txt
+Przykład.docx
