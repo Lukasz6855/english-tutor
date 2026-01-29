@@ -450,6 +450,7 @@ def tab_convert_file():
     
     # Inicjalizacja helperów
     openai_helper = get_openai_helper()
+    db_manager = get_database_manager()
     
     # --------------------------------------------------------
     # SEKCJA: UPLOAD PLIKU
@@ -477,6 +478,17 @@ def tab_convert_file():
                 st.error("❌ Nie znaleziono słówek w pliku. Sprawdź format.")
             else:
                 st.success(f"✅ Znaleziono {len(words)} słówek")
+                
+                # Zapisywanie do historii słówek
+                if db_manager:
+                    word_list = parser.extract_word_list(words)
+                    if word_list:
+                        with st.spinner("💾 Zapisuję do historii..."):
+                            try:
+                                db_manager.add_words_to_history(word_list)
+                                st.info("📝 Słówka zostały dodane do historii")
+                            except Exception as e:
+                                st.warning(f"⚠️ Nie udało się zapisać do historii: {e}")
                 
                 # Podgląd słówek
                 with st.expander("Zobacz znalezione słówka"):
