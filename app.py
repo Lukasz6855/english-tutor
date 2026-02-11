@@ -80,9 +80,16 @@ if 'openai_api_key' not in st.session_state:
     # Klucz API OpenAI (może być z .env lub wprowadzony ręcznie)
     st.session_state.openai_api_key = os.getenv('OPENAI_API_KEY', '')
 
-if 'vercel_token' not in st.session_state:
-    # Token Vercel Blob
-    st.session_state.vercel_token = os.getenv('VERCEL_BLOB_READ_WRITE_TOKEN', '')
+if 'do_spaces_config' not in st.session_state:
+    # Konfiguracja DigitalOcean Spaces
+    st.session_state.do_spaces_config = {
+        'endpoint': os.getenv('DO_SPACES_ENDPOINT', ''),
+        'region': os.getenv('DO_SPACES_REGION', ''),
+        'bucket': os.getenv('DO_SPACES_BUCKET', ''),
+        'folder': os.getenv('DO_SPACES_FOLDER', ''),
+        'access_key': os.getenv('DO_SPACES_KEY', ''),
+        'secret_key': os.getenv('DO_SPACES_SECRET', '')
+    }
 
 # ============================================================
 # FUNKCJE POMOCNICZE
@@ -100,13 +107,22 @@ def get_openai_helper():
 
 def get_database_manager():
     """
-    Zwraca instancję DatabaseManager lub None jeśli brak tokenu
+    Zwraca instancję DatabaseManager lub None jeśli brak konfiguracji
     """
-    # Sprawdzenie czy token Vercel jest dostępny
-    token = st.session_state.vercel_token
-    if not token:
+    # Sprawdzenie czy konfiguracja DigitalOcean Spaces jest dostępna
+    config = st.session_state.do_spaces_config
+    # Folder jest opcjonalny, więc sprawdzamy tylko podstawowe dane
+    required_fields = ['endpoint', 'region', 'bucket', 'access_key', 'secret_key']
+    if not all(config.get(field) for field in required_fields):
         return None
-    return DatabaseManager(token)
+    return DatabaseManager(
+        endpoint=config['endpoint'],
+        region=config['region'],
+        bucket=config['bucket'],
+        access_key=config['access_key'],
+        secret_key=config['secret_key'],
+        folder=config.get('folder', '')
+    )
 
 def display_chat_message(role: str, content: str):
     """
@@ -257,11 +273,15 @@ def tab_generate_words():
                 doc_buffer = word_generator.create_document(generated_text, topic)
                 st.session_state.generated_doc = doc_buffer
             
-            # Zapisywanie dokumentu do Vercel Blob
+            # Zapisywanie dokumentu do DigitalOcean Spaces
             if db_manager:
                 with st.spinner("☁️ Zapisuję dokument w chmurze..."):
                     try:
-                        db_manager.save_word_document(doc_buffer, topic)
+                        # Tworzymy kopię bufora, aby nie zamknąć oryginalnego
+                        doc_buffer.seek(0)
+                        doc_copy = BytesIO(doc_buffer.read())
+                        doc_buffer.seek(0)  # Resetujemy pozycję oryginalnego bufora
+                        db_manager.save_word_document(doc_copy, topic)
                     except Exception as e:
                         st.warning(f"⚠️ Nie udało się zapisać w chmurze: {e}")
             
@@ -617,8 +637,8 @@ def tab_manage_files():
     db_manager = get_database_manager()
     
     if not db_manager:
-        st.warning("⚠️ Nie skonfigurowano połączenia z Vercel Blob")
-        st.info("Dodaj token VERCEL_BLOB_READ_WRITE_TOKEN do pliku .env")
+        st.warning("⚠️ Nie skonfigurowano połączenia z DigitalOcean Spaces")
+        st.info("Uzupełnij dane dostępowe DigitalOcean Spaces w pliku .env")
         return
     
     # Pobieranie listy plików
@@ -627,10 +647,26 @@ def tab_manage_files():
             files = db_manager.list_files()
         except Exception as e:
             st.error(f"❌ Błąd pobierania plików: {e}")
+            
+            # Pomocne wskazówki diagnostyczne
+            with st.expander("🔍 Diagnostyka problemu"):
+                st.write("**Sprawdź konfigurację w pliku .env:**")
+                st.code(f"""
+DO_SPACES_ENDPOINT={st.session_state.do_spaces_config['endpoint']}
+DO_SPACES_REGION={st.session_state.do_spaces_config['region']}
+DO_SPACES_BUCKET={st.session_state.do_spaces_config['bucket']}
+DO_SPACES_KEY=***
+DO_SPACES_SECRET=***
+                """, language="env")
+                st.write("**Upewnij się, że:**")
+                st.write("- Bucket istnieje w DigitalOcean Spaces")
+                st.write("- Endpoint NIE zawiera nazwy bucketa (tylko region)")
+                st.write("- Klucze dostępowe są prawidłowe")
             return
     
     if not files:
         st.info("📭 Brak zapisanych plików")
+        st.write("Wygeneruj słówka w zakładce 'Generowanie słówek', aby utworzyć pierwszy plik.")
         return
     
     # Filtrowanie tylko plików .docx
@@ -657,11 +693,12 @@ def tab_manage_files():
             
             with col2:
                 # Przycisk do pobrania
+                file_key = file.get('key', '')
                 file_url = file.get('url', '')
-                if file_url:
+                if file_key:
                     try:
                         # Pobieranie pliku
-                        file_data = db_manager.download_file(file_url)
+                        file_data = db_manager.download_file(file_key)
                         
                         st.download_button(
                             label="📥 Pobierz",
@@ -675,17 +712,17 @@ def tab_manage_files():
                 
                 # Przycisk do usunięcia
                 if st.button("🗑️ Usuń", key=f"delete_{file.get('pathname')}"):
-                    if db_manager.delete_file(file_url):
+                    if db_manager.delete_file(file_key):
                         st.success("✅ Plik usunięty")
                         st.rerun()
                     else:
                         st.error("❌ Błąd usuwania")
             
             # Podgląd zawartości
-            if file_url:
+            if file_key:
                 if st.button("👁️ Podgląd zawartości", key=f"preview_{file.get('pathname')}"):
                     try:
-                        file_data = db_manager.download_file(file_url)
+                        file_data = db_manager.download_file(file_key)
                         parser = WordParser()
                         words = parser.parse_document(file_data)
                         
