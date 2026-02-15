@@ -76,6 +76,10 @@ if 'generated_doc' not in st.session_state:
     # Wygenerowany dokument Word
     st.session_state.generated_doc = None
 
+if 'generated_filename' not in st.session_state:
+    # Nazwa wygenerowanego pliku
+    st.session_state.generated_filename = None
+
 if 'openai_api_key' not in st.session_state:
     # Klucz API OpenAI (może być z .env lub wprowadzony ręcznie)
     st.session_state.openai_api_key = os.getenv('OPENAI_API_KEY', '')
@@ -263,10 +267,9 @@ def tab_generate_words():
             words = parser.parse_text(generated_text)
             word_list = parser.extract_word_list(words)
             
-            # Zapisywanie do bazy danych
-            if db_manager and word_list:
-                with st.spinner("💾 Zapisuję do bazy danych..."):
-                    db_manager.add_words_to_history(word_list)
+            # Ekstrakcja nazwy tematu przy użyciu AI - analizujemy prompt użytkownika
+            with st.spinner("🤖 Analizuję temat..."):
+                topic_name = openai_helper.extract_topic_name(topic)
             
             # Generowanie dokumentu Word
             with st.spinner("📄 Tworzę dokument Word..."):
@@ -274,6 +277,7 @@ def tab_generate_words():
                 st.session_state.generated_doc = doc_buffer
             
             # Zapisywanie dokumentu do DigitalOcean Spaces
+            saved_filename = None
             if db_manager:
                 with st.spinner("☁️ Zapisuję dokument w chmurze..."):
                     try:
@@ -281,11 +285,20 @@ def tab_generate_words():
                         doc_buffer.seek(0)
                         doc_copy = BytesIO(doc_buffer.read())
                         doc_buffer.seek(0)  # Resetujemy pozycję oryginalnego bufora
-                        db_manager.save_word_document(doc_copy, topic)
+                        result = db_manager.save_word_document(doc_copy, topic_name)
+                        saved_filename = result.get('filename')
+                        st.session_state.generated_filename = saved_filename
                     except Exception as e:
                         st.warning(f"⚠️ Nie udało się zapisać w chmurze: {e}")
             
+            # Zapisywanie do bazy danych (AFTER saving document to get filename)
+            if db_manager and word_list and saved_filename:
+                with st.spinner("💾 Zapisuję do historii..."):
+                    db_manager.add_words_to_history(word_list, saved_filename)
+            
             st.success(f"✅ Wygenerowano {len(words)} słówek!")
+            if saved_filename:
+                st.info(f"📁 Zapisano jako: {saved_filename}")
     
     # --------------------------------------------------------
     # SEKCJA: PODGLĄD I POBIERANIE WYGENEROWANYCH SŁÓWEK
@@ -303,9 +316,13 @@ def tab_generate_words():
             # Reset pozycji bufora
             st.session_state.generated_doc.seek(0)
             
-            # Generowanie nazwy pliku według schematu: Słówka rr.mm.dd
-            date_str = datetime.now().strftime("%y.%m.%d")
-            filename = f"Słówka {date_str}.docx"
+            # Użycie zapisanej nazwy pliku lub domyślnej nazwy
+            if st.session_state.generated_filename:
+                filename = st.session_state.generated_filename
+            else:
+                # Generowanie nazwy pliku według schematu: Słówka rr.mm.dd
+                date_str = datetime.now().strftime("%y.%m.%d")
+                filename = f"Słówka {date_str}.docx"
             
             st.download_button(
                 label="📥 Pobierz plik Word",
@@ -336,7 +353,7 @@ def tab_generate_words():
             
             # Głos lektora
             voice = st.selectbox(
-                "Głos lektora:",
+                "Głos lektora (zalecane Onyx lub Fable):",
                 options=list(AVAILABLE_VOICES.keys()),
                 format_func=lambda x: AVAILABLE_VOICES[x],
                 index=list(AVAILABLE_VOICES.keys()).index(DEFAULT_VOICE)
@@ -373,12 +390,12 @@ def tab_generate_words():
             test_mode = st.selectbox(
                 "Tryb nauki:",
                 options=[
-                    ("Normalny (angielski → polski)", None),
+                    ("Odsłuch: angielski → polski", None),
                     ("Test: polski → angielski", "pl_to_en"),
                     ("Test: angielski → polski", "en_to_pl")
                 ],
                 format_func=lambda x: x[0],
-                help="Wybierz tryb nauki"
+                help="Wybierz tryb nauki:  \n- Odsłuch: normalne czytanie przez lektora  \n- Test PL → EN: lektor czyta tłumaczenie po polsku, a użytkownik ma kilka sekund na odpowiedź  \n- Test EN → PL: lektor czyta słówko po angielsku, a użytkownik ma kilka sekund na odpowiedź"
             )[1]  # Pobieramy drugą wartość krotki (tryb)
         
         # Przycisk do generowania audio
@@ -499,13 +516,30 @@ def tab_convert_file():
             else:
                 st.success(f"✅ Znaleziono {len(words)} słówek")
                 
+                # Zapisywanie pliku do DigitalOcean Spaces
+                if db_manager:
+                    with st.spinner("☁️ Zapisuję plik w chmurze..."):
+                        try:
+                            # Resetujemy pozycję bufora przed zapisem
+                            file_data.seek(0)
+                            # Tworzymy kopię bufora
+                            file_copy = BytesIO(file_data.read())
+                            file_data.seek(0)  # Resetujemy ponownie dla dalszego użycia
+                            
+                            # Upload pliku używając oryginalnej nazwy
+                            result = db_manager.upload_file(file_copy, uploaded_file.name)
+                            st.info(f"📁 Zapisano w chmurze: {uploaded_file.name}")
+                        except Exception as e:
+                            st.warning(f"⚠️ Nie udało się zapisać w chmurze: {e}")
+                
                 # Zapisywanie do historii słówek
                 if db_manager:
                     word_list = parser.extract_word_list(words)
                     if word_list:
                         with st.spinner("💾 Zapisuję do historii..."):
                             try:
-                                db_manager.add_words_to_history(word_list)
+                                # Użycie nazwy uploadowanego pliku
+                                db_manager.add_words_to_history(word_list, uploaded_file.name)
                                 st.info("📝 Słówka zostały dodane do historii")
                             except Exception as e:
                                 st.warning(f"⚠️ Nie udało się zapisać do historii: {e}")
@@ -525,17 +559,20 @@ def tab_convert_file():
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
+                    # Szybkość mowy
                     speed = st.slider(
                         "Szybkość mowy:",
                         min_value=0.5,
                         max_value=2.0,
-                        value=1.0,
+                        value=DEFAULT_AUDIO_SETTINGS['speed'],
                         step=0.1,
+                        help="0.5 = wolno, 1.0 = normalnie, 2.0 = szybko",
                         key="convert_speed"
                     )
                     
+                    # Głos lektora
                     voice = st.selectbox(
-                        "Głos lektora:",
+                        "Głos lektora (zalecane Onyx lub Fable):",
                         options=list(AVAILABLE_VOICES.keys()),
                         format_func=lambda x: AVAILABLE_VOICES[x],
                         index=list(AVAILABLE_VOICES.keys()).index(DEFAULT_VOICE),
@@ -543,39 +580,47 @@ def tab_convert_file():
                     )
                 
                 with col2:
+                    # Przerwa między hasłami
                     pause_between = st.slider(
                         "Przerwa między hasłami (s):",
                         min_value=0.5,
                         max_value=5.0,
-                        value=2.0,
+                        value=DEFAULT_AUDIO_SETTINGS['pause_between'],
                         step=0.5,
+                        help="Czas przerwy między kolejnymi słówkami",
                         key="convert_pause"
                     )
                     
+                    # Liczba powtórzeń
                     repetitions = st.selectbox(
-                        "Liczba powtórzeń:",
+                        "Liczba powtórzeń hasła:",
                         options=[1, 2],
                         index=0,
+                        help="Ile razy powtórzyć każde słówko",
                         key="convert_repetitions"
                     )
                 
                 with col3:
+                    # Czy czytać przykłady
                     include_examples = st.checkbox(
-                        "Czytaj przykłady",
-                        value=True,
+                        "Czytaj przykładowe zdania",
+                        value=DEFAULT_AUDIO_SETTINGS['include_examples'],
+                        help="Czy lektor ma czytać zdania przykładowe",
                         key="convert_examples"
                     )
                     
+                    # Tryb testu
                     test_mode = st.selectbox(
                         "Tryb nauki:",
                         options=[
-                            ("Normalny", None),
-                            ("Test: PL → EN", "pl_to_en"),
-                            ("Test: EN → PL", "en_to_pl")
+                            ("Odsłuch: angielski → polski", None),
+                            ("Test: polski → angielski", "pl_to_en"),
+                            ("Test: angielski → polski", "en_to_pl")
                         ],
                         format_func=lambda x: x[0],
+                        help="Wybierz tryb nauki:  \n- Odsłuch: normalne czytanie przez lektora  \n- Test PL → EN: lektor czyta tłumaczenie po polsku, a użytkownik ma kilka sekund na odpowiedź  \n- Test EN → PL: lektor czyta słówko po angielsku, a użytkownik ma kilka sekund na odpowiedź",
                         key="convert_test_mode"
-                    )[1]
+                    )[1]  # Pobieramy drugą wartość krotki (tryb)
                 
                 # Przycisk do generowania
                 if st.button("🎤 Konwertuj na audio", type="primary", key="convert_btn"):
@@ -712,11 +757,21 @@ DO_SPACES_SECRET=***
                 
                 # Przycisk do usunięcia
                 if st.button("🗑️ Usuń", key=f"delete_{file.get('pathname')}"):
-                    if db_manager.delete_file(file_key):
-                        st.success("✅ Plik usunięty")
-                        st.rerun()
-                    else:
-                        st.error("❌ Błąd usuwania")
+                    try:
+                        filename = file.get('pathname', '')
+                        
+                        # Najpierw usuń słówka z historii
+                        with st.spinner("🗑️ Usuwam z historii..."):
+                            db_manager.remove_words_from_history(filename)
+                        
+                        # Następnie usuń plik
+                        if db_manager.delete_file(file_key):
+                            st.success(f"✅ Plik '{filename}' usunięty wraz ze słówkami z historii")
+                            st.rerun()
+                        else:
+                            st.error("❌ Błąd usuwania pliku")
+                    except Exception as e:
+                        st.error(f"❌ Błąd podczas usuwania: {e}")
             
             # Podgląd zawartości
             if file_key:
@@ -742,6 +797,7 @@ DO_SPACES_SECRET=***
     
     # Pobieranie historii słówek
     words_history = db_manager.get_words_history()
+    history_by_file = db_manager.get_history_by_file()
     
     col1, col2 = st.columns(2)
     
@@ -749,12 +805,37 @@ DO_SPACES_SECRET=***
         st.metric("Liczba plików Word", len(word_files))
     
     with col2:
-        st.metric("Wszystkie słówka w historii", len(words_history))
+        st.metric("Wszystkie unikalne słówka", len(words_history))
     
-    # Lista wszystkich słówek
-    if words_history:
+    # Historia słówek pogrupowana według plików
+    if history_by_file:
+        st.divider()
+        st.subheader("📚 Historia słówek według plików")
+        
+        for filename, file_data in sorted(history_by_file.items()):
+            words_in_file = file_data.get('words', [])
+            created_at = file_data.get('created_at', 'Nieznana')
+            word_count = file_data.get('word_count', 0)
+            
+            # Formatowanie daty
+            try:
+                from datetime import datetime
+                date_obj = datetime.fromisoformat(created_at)
+                date_str = date_obj.strftime("%Y-%m-%d %H:%M")
+            except:
+                date_str = created_at
+            
+            with st.expander(f"📄 {filename} ({word_count} słówek) - {date_str}"):
+                # Wyświetlenie słówek w kolumnach
+                if words_in_file:
+                    cols = st.columns(4)
+                    for i, word in enumerate(sorted(words_in_file)):
+                        cols[i % 4].write(f"• {word}")
+                else:
+                    st.info("Brak słówek")
+    elif words_history:
+        # Fallback dla starej struktury historii
         with st.expander("📝 Zobacz wszystkie słówka w historii"):
-            # Wyświetlenie słówek w kolumnach
             cols = st.columns(4)
             for i, word in enumerate(sorted(words_history)):
                 cols[i % 4].write(f"• {word}")

@@ -198,10 +198,63 @@ class DatabaseManager:
     
     def get_words_history(self) -> list:
         """
-        Pobiera historię wszystkich wygenerowanych słówek
+        Pobiera historię wszystkich wygenerowanych słówek (unikalne słowa ze wszystkich plików)
         
         Returns:
-            Lista słówek (stringów) które już były wygenerowane
+            Lista unikalnych słówek (stringów) które już były wygenerowane
+        """
+        try:
+            # Pobieranie szczegółowej historii
+            history_data = self._load_history_file()
+            
+            if not history_data:
+                return []
+            
+            # Jeśli to stara struktura (lista słówek)
+            if 'words' in history_data and isinstance(history_data['words'], list):
+                return history_data['words']
+            
+            # Nowa struktura - zbieramy wszystkie unikalne słówka
+            all_words = set()
+            for file_data in history_data.get('files', {}).values():
+                all_words.update(file_data.get('words', []))
+            
+            return list(all_words)
+            
+        except Exception as e:
+            # W przypadku błędu zwracamy pustą listę
+            print(f"Błąd pobierania historii: {e}")
+            return []
+    
+    def get_history_by_file(self) -> dict:
+        """
+        Pobiera historię słówek zgrupowaną według plików
+        
+        Returns:
+            Słownik: {filename: {words: [...], created_at: ..., word_count: ...}}
+        """
+        try:
+            history_data = self._load_history_file()
+            
+            if not history_data:
+                return {}
+            
+            # Jeśli to stara struktura, konwertujemy do nowej
+            if 'words' in history_data and isinstance(history_data['words'], list):
+                return {}
+            
+            return history_data.get('files', {})
+            
+        except Exception as e:
+            print(f"Błąd pobierania historii: {e}")
+            return {}
+    
+    def _load_history_file(self) -> dict:
+        """
+        Wczytuje plik z historią słówek
+        
+        Returns:
+            Słownik z danymi historii lub None jeśli plik nie istnieje
         """
         try:
             # Pobieranie listy plików
@@ -214,49 +267,57 @@ class DatabaseManager:
                     history_file = f
                     break
             
-            # Jeśli nie znaleziono pliku historii, zwracamy pustą listę
+            # Jeśli nie znaleziono pliku historii
             if not history_file:
-                return []
+                return None
             
             # Pobieranie zawartości pliku historii
             file_data = self.download_file(history_file['key'])
             
             # Parsowanie JSON
-            history = json.loads(file_data.read().decode('utf-8'))
-            
-            return history.get('words', [])
+            return json.loads(file_data.read().decode('utf-8'))
             
         except Exception as e:
-            # W przypadku błędu zwracamy pustą listę
-            print(f"Błąd pobierania historii: {e}")
-            return []
+            print(f"Błąd wczytywania pliku historii: {e}")
+            return None
     
-    def add_words_to_history(self, new_words: list) -> bool:
+    def add_words_to_history(self, new_words: list, filename: str) -> bool:
         """
-        Dodaje nowe słówka do historii
+        Dodaje nowe słówka do historii dla konkretnego pliku
         
         Args:
             new_words: Lista nowych słówek do dodania
+            filename: Nazwa pliku, do którego należą słówka
             
         Returns:
             True jeśli zapisanie się powiodło
         """
         try:
-            # Pobieranie aktualnej historii
-            current_words = self.get_words_history()
+            # Wczytanie aktualnej historii
+            history_data = self._load_history_file()
             
-            # Dodawanie nowych słówek (unikalne, małe litery)
-            for word in new_words:
-                word_lower = word.lower().strip()
-                if word_lower and word_lower not in current_words:
-                    current_words.append(word_lower)
+            # Jeśli nie ma historii lub to stara struktura, tworzymy nową
+            if not history_data or 'words' in history_data:
+                history_data = {'files': {}, 'last_updated': '', 'total_words': 0}
             
-            # Tworzenie struktury JSON
-            history_data = {
-                'words': current_words,
-                'last_updated': datetime.now().isoformat(),
-                'total_count': len(current_words)
+            # Normalizacja słówek (małe litery, bez białych znaków)
+            normalized_words = [word.lower().strip() for word in new_words if word.strip()]
+            
+            # Dodanie/aktualizacja danych dla tego pliku
+            history_data['files'][filename] = {
+                'words': normalized_words,
+                'created_at': datetime.now().isoformat(),
+                'word_count': len(normalized_words)
             }
+            
+            # Aktualizacja metadanych
+            history_data['last_updated'] = datetime.now().isoformat()
+            
+            # Obliczenie całkowitej liczby unikalnych słówek
+            all_words = set()
+            for file_data in history_data['files'].values():
+                all_words.update(file_data['words'])
+            history_data['total_words'] = len(all_words)
             
             # Konwersja do JSON i BytesIO
             json_str = json.dumps(history_data, ensure_ascii=False, indent=2)
@@ -271,25 +332,80 @@ class DatabaseManager:
             print(f"Błąd zapisywania historii: {e}")
             return False
     
-    def save_word_document(self, doc_data: BytesIO, topic: str) -> dict:
+    def remove_words_from_history(self, filename: str) -> bool:
         """
-        Zapisuje dokument Word z listą słówek
+        Usuwa słówka z historii dla konkretnego pliku.
+        Usuwa tylko słówka unikalne dla tego pliku (które nie występują w innych plikach).
+        
+        Args:
+            filename: Nazwa pliku do usunięcia z historii
+            
+        Returns:
+            True jeśli usunięcie się powiodło
+        """
+        try:
+            # Wczytanie aktualnej historii
+            history_data = self._load_history_file()
+            
+            if not history_data or 'files' not in history_data:
+                return True  # Nie ma czego usuwać
+            
+            # Usunięcie pliku z historii
+            if filename in history_data['files']:
+                del history_data['files'][filename]
+            
+            # Aktualizacja metadanych
+            history_data['last_updated'] = datetime.now().isoformat()
+            
+            # Obliczenie całkowitej liczby unikalnych słówek
+            all_words = set()
+            for file_data in history_data['files'].values():
+                all_words.update(file_data['words'])
+            history_data['total_words'] = len(all_words)
+            
+            # Konwersja do JSON i BytesIO
+            json_str = json.dumps(history_data, ensure_ascii=False, indent=2)
+            file_data = BytesIO(json_str.encode('utf-8'))
+            
+            # Upload pliku historii
+            self.upload_file(file_data, self.history_filename)
+            
+            return True
+            
+        except Exception as e:
+            print(f"Błąd usuwania z historii: {e}")
+            return False
+    
+    def save_word_document(self, doc_data: BytesIO, topic_name: str) -> dict:
+        """
+        Zapisuje dokument Word z listą słówek używając nazwy opartej na temacie.
+        Jeśli plik z takim tematem już istnieje, dodaje numer.
         
         Args:
             doc_data: Dane dokumentu jako BytesIO
-            topic: Temat słówek (do nazwy pliku)
+            topic_name: Nazwa tematu wygenerowana przez AI
             
         Returns:
-            Słownik z informacjami o zapisanym pliku
+            Słownik z informacjami o zapisanym pliku (url, key, filename)
         """
-        # Generowanie nazwy pliku według schematu: Słówka rr.mm.dd
-        date_str = datetime.now().strftime("%y.%m.%d")
+        # Pobieranie listy istniejących plików
+        existing_files = self.list_files()
+        existing_names = [f.get('pathname', '') for f in existing_files if f.get('pathname', '').endswith('.docx')]
         
-        # Tworzenie nazwy pliku
-        filename = f"Słówka {date_str}.docx"
+        # Generowanie nazwy bazowej
+        base_name = f"Słówka - {topic_name}"
+        filename = f"{base_name}.docx"
+        
+        # Sprawdzanie kolizji nazw i dodawanie numeru jeśli potrzeba
+        counter = 2
+        while filename in existing_names:
+            filename = f"{base_name} {counter}.docx"
+            counter += 1
         
         # Upload pliku
-        return self.upload_file(doc_data, filename)
+        result = self.upload_file(doc_data, filename)
+        result['filename'] = filename  # Dodajemy nazwę pliku do wyniku
+        return result
     
     def test_connection(self) -> bool:
         """

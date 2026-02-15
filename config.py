@@ -13,8 +13,8 @@ OPENAI_MODEL = "gpt-5.2"
 # Model do konwersji tekstu na mowę
 OPENAI_TTS_MODEL = "tts-1"
 
-# Domyślny głos lektora (echo - męski głos)
-DEFAULT_VOICE = "echo"
+# Domyślny głos lektora (onyx - głęboki męski głos)
+DEFAULT_VOICE = "onyx"
 
 # Dostępne głosy OpenAI TTS
 AVAILABLE_VOICES = {
@@ -40,7 +40,7 @@ DEFAULT_AUDIO_SETTINGS = {
 }
 
 # Przerwa w trybie testowym (sekundy) - czas na odpowiedź użytkownika
-TEST_PAUSE_DURATION = 2.0
+TEST_PAUSE_DURATION = 3.0
 
 # ============================================================
 # KONFIGURACJA KATEGORII SŁÓWEK
@@ -70,8 +70,8 @@ Twoje zadania:
 3. Dostosowywanie poziomu trudności do potrzeb użytkownika
 
 WAŻNE ZASADY FORMATOWANIA:
-- Każde słówko musi zawierać: słowo angielskie, wymowę fonetyczną w nawiasie, polskie tłumaczenie
-- Po każdym słówku dodaj przykładowe zdanie z "ex:"
+- Każde słówko musi zawierać: słowo angielskie, wymowę fonetyczną w nawiasie (zapis polski JAK SŁYSZYMY, BEZ myślników), polskie tłumaczenie
+- Pod każdym hasłem, w nowej linii, dodaj przykładowe zdanie z "ex:"
 - Grupuj słówka według kategorii (CZASOWNIKI, PRZYMIOTNIKI, PHRASAL VERBS, itp.)
 
 PRZYKŁADOWY FORMAT:
@@ -88,24 +88,30 @@ PRZYMIOTNIKI
 3. ambitious (ambiszys) – ambitny
 ex: She is very ambitious and hardworking.
 
+WAŻNE: Wymowa w nawiasie MUSI być zapisana po polsku TAK JAK SŁYSZYMY (fonetycznie), BEZ UŻYWANIA myślników między sylabami!
+
 Zawsze odpowiadaj po polsku, ale słówka i przykłady podawaj po angielsku z polskim tłumaczeniem."""
 
 # ============================================================
 # PROMPT DO GENEROWANIA SŁÓWEK
 # ============================================================
 
-GENERATION_PROMPT_TEMPLATE = """Wygeneruj listę {count} słówek angielskich na temat: {topic}
+GENERATION_PROMPT_TEMPLATE = """MUSISZ WYGENEROWAĆ DOKŁADNIE {count} SŁÓWEK - ani więcej, ani mniej!
 
-WAŻNE:
-1. NIE POWTARZAJ tych słówek, które już były wygenerowane wcześniej:
+Temat słówek: {topic}
+
+KRYTYCZNE WYMAGANIA:
+1. Wygeneruj DOKŁADNIE {count} słówek (liczba musi być dokładnie {count}!)
+
+2. NIE POWTARZAJ tych słówek, które już były wygenerowane wcześniej:
 {existing_words}
 
-2. Użyj dokładnie tego formatu dla każdego słówka:
-[numer]. [słówko angielskie] ([wymowa fonetyczna]) – [polskie tłumaczenie]
+3. Użyj DOKŁADNIE tego formatu dla każdego słówka:
+[numer]. [słówko angielskie] ([wymowa fonetyczna PO POLSKU BEZ MYŚLNIKÓW]) – [polskie tłumaczenie]
 ex: [przykładowe zdanie po angielsku]
 
-3. Pogrupuj słówka według kategorii (np. CZASOWNIKI, PRZYMIOTNIKI, PHRASAL VERBS, RZECZOWNIKI)
-4. Każda kategoria powinna być oddzielona linią: ---------------------
+4. Pogrupuj słówka według kategorii (np. CZASOWNIKI, PRZYMIOTNIKI, PHRASAL VERBS, RZECZOWNIKI)
+5. Każda kategoria powinna być oddzielona linią: ---------------------
 
 Przykład poprawnego formatu:
 CZASOWNIKI
@@ -122,4 +128,6 @@ PRZYMIOTNIKI
 3. ambitious (ambiszys) – ambitny
 ex: She is very ambitious and hardworking.
 
-Wygeneruj teraz {count} nowych, unikalnych słówek:"""
+PA MIĘTAJ: Wymowę zapisuj po polsku JAK SŁYSZYMY (fonetycznie), BEZ myślników między sylabami!
+
+Wygeneruj teraz DOKŁADNIE {count} nowych, unikalnych słówek:"""

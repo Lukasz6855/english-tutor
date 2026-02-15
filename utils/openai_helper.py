@@ -115,6 +115,47 @@ class OpenAIHelper:
         # Zwrócenie danych audio jako bytes
         return response.content
     
+    def extract_topic_name(self, user_topic: str) -> str:
+        """
+        Ekstraktuje krótką nazwę tematu z promptu użytkownika przy użyciu AI
+        
+        Args:
+            user_topic: Temat słówek wpisany przez użytkownika (np. "słówka o podróżowaniu z poziomu C1/C2")
+            
+        Returns:
+            Krótka nazwa tematu (2-4 słowa po polsku) bez przedrostka "Słówka - "
+        """
+        prompt = f"""Użytkownik chce wygenerować słówka na temat: "{user_topic}"
+
+Na podstawie tego opisu, stwórz TYLKO krótką, zwięzłą nazwę pliku (2-4 słowa maksymalnie, po polsku).
+
+Przykłady:
+- Użytkownik: "słówka o podróżowaniu z poziomu C1/C2" → Nazwa: "podróżowanie C1/C2"
+- Użytkownik: "jedzenie w restauracji dla początkujących" → Nazwa: "jedzenie i restauracje"
+- Użytkownik: "czasowniki biznesowe" → Nazwa: "biznes"
+- Użytkownik: "sport fitness advanced" → Nazwa: "sport i fitness"
+
+NIE DODAWAJ niczego więcej - tylko nazwa tematu, bez przedrostka "Słówka - ", bez cudzysłowów, bez dodatkowych wyjaśnień.
+
+Temat użytkownika: "{user_topic}"
+
+Nazwa pliku:"""
+        
+        # Wysłanie zapytania do API
+        response = self.client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": "Jesteś ekspertem w kategoryzacji tematów. Odpowiadasz TYLKO krótką nazwą tematu, bez dodatkowych słów."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,  # Niska temperatura dla bardziej przewidywalnych wyników
+            max_completion_tokens=30     # Krótka odpowiedź
+        )
+        
+        # Zwrócenie nazwy tematu (usuwamy białe znaki i ewentualne cudzysłowy)
+        topic = response.choices[0].message.content.strip().strip('"').strip("'")
+        return topic
+    
     def test_connection(self) -> bool:
         """
         Testuje połączenie z API OpenAI
@@ -127,7 +168,7 @@ class OpenAIHelper:
             self.client.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=[{"role": "user", "content": "test"}],
-                max_tokens=5  # Minimalna odpowiedź dla szybkości
+                max_completion_tokens=5  # Minimalna odpowiedź dla szybkości
             )
             return True
         except Exception:
