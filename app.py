@@ -852,6 +852,37 @@ def main():
     st.title("📚 Generator Słówek Angielskich")
     st.caption("Aplikacja do nauki słówek z pomocą AI")
     
+    # Sekcja pomocy - Co mogę tutaj robić?
+    with st.expander("ℹ️ Co mogę tutaj robić?", expanded=False):
+        st.markdown("""
+        ### Witaj w Generatorze Słówek Angielskich! 👋
+        
+        Ta aplikacja pomaga Ci uczyć się angielskiego dzięki zaawansowanej sztucznej inteligencji. Oto co możesz zrobić:
+        
+        #### 🎓 Generowanie słówek
+        - **Wygeneruj słówka AI** - wybierz temat (np. podróże, biznes, jedzenie), a AI wygeneruje dla Ciebie listę słówek z tłumaczeniami i wymową
+        - **Eksport do Word** - automatyczne tworzenie profesjonalnie sformatowanych dokumentów ze słówkami
+        - **Konwersja na audio MP3** - słuchaj słówek z profesjonalnym lektorem (6 głosów do wyboru)
+        - **Tryby nauki**:
+          - 🎧 **Odsłuch** - normalne czytanie przez lektora
+          - 🇵🇱→🇬🇧 **Test Polski → Angielski** - lektor czyta po polsku, ty odpowiadasz po angielsku
+          - 🇬🇧→🇵🇱 **Test Angielski → Polski** - lektor czyta po angielsku, ty odpowiadasz po polsku
+        
+        #### 📂 Konwersja własnego pliku
+        - **Wgraj swój plik Word** ze słówkami, które już masz
+        - **Konwertuj na audio** - zamień swoje słówka na plik MP3 do nauki
+        - **Zapisz w chmurze** - przechowuj pliki w bezpiecznym miejscu
+        
+        #### 📁 Zarządzanie plikami
+        - **Przeglądaj swoje pliki** - zobacz wszystkie zapisane dokumenty ze słówkami
+        - **Pobieraj** - ściągnij pliki Word na swój komputer
+        - **Usuwaj** - zarządzaj swoją biblioteką słówek
+        - **Statystyki** - zobacz ile słówek już się nauczyłeś
+        
+        ---
+        💡 **Wskazówka**: Zacznij od zakładki "🎓 Generowanie słówek" i wpisz temat, który Cię interesuje!
+        """)
+    
     # Tworzenie zakładek
     tab1, tab2, tab3 = st.tabs([
         "🎓 Generowanie słówek",
